@@ -102,8 +102,21 @@
         
         const CATEGORIES = ["Silly & Random", "Christmas", "Bible", "Cyberpunk", "Space", "Ancient History", "Food", "Movies", "Gaming", "Undercover", "Science", "Animals", "Pop Culture"];
 
-        const utoa = (str) => btoa(unescape(encodeURIComponent(str)));
-        const atou = (str) => decodeURIComponent(escape(atob(str)));
+        // Modern, robust UTF-8 safe Base64 encoding/decoding
+        const utoa = (str) => {
+            const bytes = new TextEncoder().encode(str);
+            let binString = "";
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binString += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binString);
+        };
+
+        const atou = (base64) => {
+            const binString = atob(base64);
+            const bytes = Uint8Array.from(binString, (m) => m.charCodeAt(0));
+            return new TextDecoder().decode(bytes);
+        };
 
         const Icon = ({ name, ...props }) => {
             const LucideIcon = Lucide[name];
@@ -140,16 +153,24 @@
 
             const loadFromEncodedData = (encodedData) => {
                 try {
-                    const decoded = JSON.parse(atou(encodedData));
+                    // Pre-process the string: trim and remove potential URL encodings
+                    const cleanEncoded = decodeURIComponent(encodedData.trim());
+                    const decodedStr = atou(cleanEncoded);
+                    const decoded = JSON.parse(decodedStr);
+                    
+                    if (!decoded.gameData || !decoded.players) {
+                        throw new Error("Invalid structure");
+                    }
+
                     setGameData(decoded.gameData);
                     setPlayers(decoded.players);
-                    setDuration(decoded.duration);
-                    setRoomCode(decoded.roomCode);
+                    setDuration(decoded.duration || 3);
+                    setRoomCode(decoded.roomCode || "UNKNOWN");
                     setIsOnline(true);
                     setView(GameState.JOIN);
                 } catch (e) {
-                    alert("Neural Key Corrupted or Invalid.");
-                    console.error("Link corruption:", e);
+                    console.error("Neural Key corruption error:", e);
+                    alert("Neural Key Corrupted or Invalid. Please ensure you copied the full key or link.");
                 }
             };
 
@@ -176,7 +197,8 @@
             };
 
             const getShareableLink = (encoded) => {
-                return `${window.location.origin}${window.location.pathname}?data=${encoded}`;
+                // Use encodeURIComponent to safely put Base64 into a URL
+                return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(encoded)}`;
             };
 
             const startNewGame = async () => {
@@ -266,12 +288,24 @@
             };
 
             const handleManualJoin = () => {
-                if (!manualKey.trim()) return;
-                // Check if it's a full URL or just the key
-                let key = manualKey.trim();
-                if (key.includes("?data=")) {
-                    key = key.split("?data=")[1];
+                let input = manualKey.trim();
+                if (!input) return;
+
+                // Extraction logic for links vs raw keys
+                let key = input;
+                if (input.includes("data=")) {
+                    try {
+                        const url = new URL(input.startsWith('http') ? input : 'http://x.com/' + input);
+                        const params = new URLSearchParams(url.search);
+                        key = params.get('data') || key;
+                    } catch (e) {
+                        // Fallback simple split if URL parsing fails
+                        if (input.includes("?data=")) {
+                            key = input.split("?data=")[1].split("&")[0];
+                        }
+                    }
                 }
+                
                 loadFromEncodedData(key);
             };
 
@@ -306,7 +340,7 @@
                         </h1>
                         <div className="flex items-center justify-center gap-4 mt-4">
                             <span className="h-px w-8 bg-indigo-500/30"></span>
-                            <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-[0.6em]">Matrix v7.5</p>
+                            <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-[0.6em]">Matrix v7.6</p>
                             <span className="h-px w-8 bg-indigo-500/30"></span>
                         </div>
                     </header>
@@ -344,7 +378,7 @@
                                 </div>
                                 <div className="space-y-4">
                                     <textarea 
-                                        placeholder="Paste Mission Key here..." 
+                                        placeholder="Paste Mission Key or Link here..." 
                                         value={manualKey}
                                         onChange={(e) => setManualKey(e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-800 p-6 rounded-2xl text-indigo-400 text-sm font-mono h-32 outline-none focus:border-indigo-500 transition-all resize-none"
@@ -352,7 +386,7 @@
                                     <button 
                                         onClick={handleManualJoin}
                                         disabled={!manualKey.trim()}
-                                        className={`w-full py-6 rounded-2xl font-orbitron font-bold uppercase text-lg transition-all ${manualKey.trim() ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
+                                        className={`w-full py-6 rounded-2xl font-orbitron font-bold uppercase text-lg transition-all ${manualKey.trim() ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/20' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
                                     >
                                         Establish Connection
                                     </button>
