@@ -101,6 +101,10 @@
         
         const CATEGORIES = ["Silly & Random", "Christmas", "Bible", "Cyberpunk", "Space", "Ancient History", "Food", "Movies", "Gaming", "Undercover", "Science", "Animals", "Pop Culture"];
 
+        // Robust UTF-8 safe base64 encoding/decoding
+        const utoa = (str) => btoa(unescape(encodeURIComponent(str)));
+        const atou = (str) => decodeURIComponent(escape(atob(str)));
+
         const Icon = ({ name, ...props }) => {
             const LucideIcon = Lucide[name];
             return LucideIcon ? <LucideIcon {...props} /> : null;
@@ -117,20 +121,20 @@
             const [winner, setWinner] = useState(null);
             const [votedPlayer, setVotedPlayer] = useState(null);
             const [timeLeft, setTimeLeft] = useState(180);
-            const [duration, setDuration] = useState(3); // Now in minutes
+            const [duration, setDuration] = useState(3); 
             const [numPlayers, setNumPlayers] = useState(4);
             const [numImposters, setNumImposters] = useState(1);
             const [category, setCategory] = useState("Silly & Random");
             const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
             const [roomCode, setRoomCode] = useState("");
+            const [showLinkFallback, setShowLinkFallback] = useState(false);
 
-            // URL Sync Logic for Online Mode
             useEffect(() => {
                 const urlParams = new URLSearchParams(window.location.search);
                 const dataParam = urlParams.get('data');
                 if (dataParam) {
                     try {
-                        const decoded = JSON.parse(atob(dataParam));
+                        const decoded = JSON.parse(atou(dataParam));
                         setGameData(decoded.gameData);
                         setPlayers(decoded.players);
                         setDuration(decoded.duration);
@@ -162,7 +166,7 @@
                     duration: duration,
                     roomCode: code
                 };
-                const encoded = btoa(JSON.stringify(state));
+                const encoded = utoa(JSON.stringify(state));
                 return `${window.location.origin}${window.location.pathname}?data=${encoded}`;
             };
 
@@ -239,6 +243,20 @@
                 }
             };
 
+            const copyToClipboard = async (text) => {
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText(text);
+                        alert("Mission link copied to clipboard!");
+                    } else {
+                        setShowLinkFallback(true);
+                    }
+                } catch (err) {
+                    console.error('Failed to copy: ', err);
+                    setShowLinkFallback(true);
+                }
+            };
+
             if (loading) return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-6 text-center">
                     <div className="relative w-32 h-32 mb-10">
@@ -261,7 +279,7 @@
                         </h1>
                         <div className="flex items-center justify-center gap-4 mt-4">
                             <span className="h-px w-8 bg-indigo-500/30"></span>
-                            <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-[0.6em]">Matrix v7.0</p>
+                            <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-[0.6em]">Matrix v7.1</p>
                             <span className="h-px w-8 bg-indigo-500/30"></span>
                         </div>
                     </header>
@@ -341,16 +359,26 @@
                                 </div>
                                 <div className="space-y-4">
                                     <p className="text-slate-400 text-sm">Send this encrypted link to other agents. They must choose their name to see their assignment.</p>
-                                    <button 
-                                        onClick={() => {
-                                            const link = getShareableLink(gameData, players, roomCode);
-                                            navigator.clipboard.writeText(link);
-                                            alert("Link copied to clipboard!");
-                                        }}
-                                        className="w-full py-6 bg-indigo-600 text-white font-orbitron font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-indigo-500"
-                                    >
-                                        <Icon name="Link" className="w-5 h-5" /> Copy Mission Link
-                                    </button>
+                                    
+                                    {showLinkFallback ? (
+                                        <div className="space-y-2">
+                                            <input 
+                                                readOnly 
+                                                value={getShareableLink(gameData, players, roomCode)} 
+                                                className="w-full bg-slate-900 border border-indigo-500/50 p-4 rounded-xl text-xs text-white"
+                                                onClick={(e) => e.target.select()}
+                                            />
+                                            <p className="text-[10px] text-slate-500 uppercase">Long-press to copy link</p>
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => copyToClipboard(getShareableLink(gameData, players, roomCode))}
+                                            className="w-full py-6 bg-indigo-600 text-white font-orbitron font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-indigo-500"
+                                        >
+                                            <Icon name="Link" className="w-5 h-5" /> Copy Mission Link
+                                        </button>
+                                    )}
+
                                     <button onClick={() => setView(GameState.JOIN)} className="w-full py-4 text-indigo-400 font-bold uppercase tracking-widest text-xs">Enter Briefing Room</button>
                                 </div>
                             </div>
@@ -488,7 +516,13 @@
                                 </div>
 
                                 <div className="space-y-4 pt-6 border-t border-slate-800">
-                                    <button onClick={() => { setView(GameState.MODE); window.history.pushState({}, '', window.location.pathname); }} className="w-full py-6 bg-indigo-600 text-white font-orbitron font-bold rounded-[2.5rem] shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all uppercase tracking-widest text-lg">Main Menu</button>
+                                    <button onClick={() => { 
+                                        setView(GameState.MODE); 
+                                        try {
+                                            window.history.pushState({}, '', window.location.pathname);
+                                        } catch (e) {}
+                                        setIsOnline(false);
+                                    }} className="w-full py-6 bg-indigo-600 text-white font-orbitron font-bold rounded-[2.5rem] shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all uppercase tracking-widest text-lg">Main Menu</button>
                                 </div>
                             </div>
                         )}
