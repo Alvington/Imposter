@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Save, FolderPlus, Lock, Unlock, Eye, EyeOff, UserPlus } from 'lucide-react';
-import { CustomCategory, CustomItem } from '../types.ts';
+// Fixed: Remove .ts extension from import to resolve module properly
+import { CustomCategory, CustomItem } from '../types';
 
 interface CustomCategoryModalProps {
   onClose: () => void;

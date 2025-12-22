@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { GameData, Source, Difficulty, CustomItem } from "../types.ts";
+// Fixed: Remove .ts extension from import to match standard resolution behavior
+import { GameData, Source, Difficulty, CustomItem } from "../types";
 
 /**
  * Safely generates game data by initializing the AI client within the request scope.
@@ -85,6 +86,7 @@ export async function generateGameData(
     const data = JSON.parse(text.trim());
     
     const sources: Source[] = [];
+    // Extracting grounding sources from groundingChunks as per requirements for Google Search grounding
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
       chunks.forEach((chunk: any) => {

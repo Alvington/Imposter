@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { Users, Layers, Clock, Zap, Plus, Trash2, Edit2, Bookmark, Copy, Check } from 'lucide-react';
-import { Difficulty, CustomCategory } from '../types.ts';
-import { storageService } from '../services/storageService.ts';
-import CustomCategoryModal from './CustomCategoryModal.tsx';
+// Fixed: Remove .ts extension from import
+import { Difficulty, CustomCategory } from '../types';
+import { storageService } from '../services/storageService';
+import CustomCategoryModal from './CustomCategoryModal';
 
 interface SetupScreenProps {
   onStart: (playerNames: string[], numImposters: number, category: string, duration: number, difficulty: Difficulty, customCategory?: CustomCategory) => void;
@@ -188,7 +189,8 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, isOnline, roomCode, 
                 <Zap className="w-3 h-3" /> Difficulty
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {Object.values(Difficulty).map(d => (
+                {/* Fixed: Cast Difficulty values to array to resolve React Key and indexing type errors */}
+                {(Object.values(Difficulty) as Difficulty[]).map(d => (
                   <button
                     key={d}
                     type="button"
