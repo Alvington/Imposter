@@ -5,42 +5,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IMPOSTER | AI Social Deduction</title>
-    <!-- CSS & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: #0f172a; 
-            color: #f8fafc; 
-            margin: 0; 
-            min-height: 100vh;
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-        }
-        #error-display { 
-            display: none; 
-            position: fixed; 
-            top: 0; left: 0; width: 100%; 
-            background: #ef4444; color: white; 
-            padding: 8px; font-size: 10px; z-index: 9999; 
-            text-align: center; font-family: monospace; 
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; min-height: 100vh; overflow-x: hidden; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        @keyframes fade-in {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
-        .reveal-card {
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-            transform-style: preserve-3d;
-        }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
     </style>
-    
-    <!-- Libraries -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
 {
@@ -55,377 +28,254 @@
 </script>
 </head>
 <body>
-    <div id="error-display"></div>
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef } from 'react';
+        import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
         import { GoogleGenAI, Type } from "@google/genai";
         import * as Lucide from 'lucide-react';
 
-        // --- Configuration & Constants ---
-        // Note: process.env.API_KEY is handled by the environment. 
-        // DO NOT overwrite it with a blank shim if it is being injected.
-
         const Role = { CIVILIAN: 'CIVILIAN', IMPOSTER: 'IMPOSTER' };
         const GameState = { MODE: 'MODE', SETUP: 'SETUP', REVEAL: 'REVEAL', PLAYING: 'PLAYING', WINNER: 'WINNER' };
-        const CATEGORIES = [
-          "Silly & Random", "Christmas", "Bible", "Animals & Nature", "Anime", 
-          "Famous People", "Food & Drink", "Brands", "Fashion", "Film & TV", 
-          "Games", "Music", "Sports", "World & Flags", "Pop Culture"
-        ];
         
-        const FALLBACK_LIBRARY = [
-            { word: "Smartphone", hint: "A pocket-sized glass window to the entire world." },
-            { word: "Marshmallow", hint: "A soft, sugary white puff that loves campfires." },
-            { word: "Submarine", hint: "A metal whale that breathes through a tube." },
-            { word: "Pineapple", hint: "A fruit that wears a crown but lives on the ground." },
-            { word: "Keyboard", hint: "A board of many clicks used to speak to machines." },
-            { word: "Astronaut", hint: "A person who works where there is no air." },
-            { word: "Library", hint: "A silent house for thousands of voices trapped in paper." },
-            { word: "Umbrella", hint: "A portable roof used mainly for the sky's tears." },
-            { word: "Bicycle", hint: "A machine with two circles that only stays up if it moves." },
-            { word: "Popcorn", hint: "Seeds that explode when they get too hot." }
+        const FALLBACK_DICTIONARY = [
+            { word: "Smartphone", hint: "A glowing glass rectangle that connects the whole world." },
+            { word: "Campfire", hint: "A dancing orange light used for cooking and warmth outdoors." },
+            { word: "Submarine", hint: "A metal vessel that explores the deep blue silence." },
+            { word: "Pineapple", hint: "A prickly fruit that wears a green crown." },
+            { word: "Library", hint: "A quiet place filled with thousands of paper stories." },
+            { word: "Astronaut", hint: "A person who works where there is no gravity." },
+            { word: "Popcorn", hint: "White fluffy snacks that start as tiny yellow seeds." },
+            { word: "Bicycle", hint: "A two-wheeled machine powered by human legs." },
+            { word: "Umbrella", hint: "A portable roof used when the sky is crying." },
+            { word: "Keyboard", hint: "A board of many buttons used to talk to a computer." },
+            { word: "Telescope", hint: "A long tube that brings the distant stars closer." },
+            { word: "Volcano", hint: "A mountain that occasionally breathes fire." },
+            { word: "Honeycomb", hint: "A hexagonal structure built by tiny buzzing workers." },
+            { word: "Snowman", hint: "A frozen person with a carrot for a nose." },
+            { word: "Helicopter", hint: "A flying machine with spinning blades on top." }
         ];
 
-        const LOADING_MESSAGES = [
-          "Consulting the oracle...",
-          "Searching the web for secrets...",
-          "Drafting cryptic hints...",
-          "Preparing the imposter...",
-        ];
+        const CATEGORIES = ["Silly & Random", "Christmas", "Bible", "Animals", "Anime", "Famous People", "Food", "Brands", "Fashion", "Movies", "Gaming", "Music", "Sports", "World", "Pop Culture"];
 
-        // --- Utilities ---
         const Icon = ({ name, ...props }) => {
-          const LucideIcon = Lucide[name];
-          return LucideIcon ? <LucideIcon {...props} /> : null;
-        };
-
-        const storage = {
-          getCustom: () => JSON.parse(localStorage.getItem('imp_custom_v2') || '[]'),
-          saveCustom: (cat) => {
-            const cats = storage.getCustom();
-            const idx = cats.findIndex(c => c.id === cat.id);
-            if (idx >= 0) cats[idx] = cat; else cats.push(cat);
-            localStorage.setItem('imp_custom_v2', JSON.stringify(cats));
-          }
-        };
-
-        // --- API Service ---
-        async function fetchGameData(category) {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          try {
-            const response = await ai.models.generateContent({
-              model: 'gemini-3-flash-preview',
-              contents: `Imposter Game: Category "${category}". Generate a secret word and a cryptic hint for the imposter. The word should be common but interesting. The hint should describe the word vaguely without naming it. Return JSON: { "word": "...", "hint": "..." }`,
-              config: { 
-                tools: [{ googleSearch: {} }],
-                responseMimeType: "application/json",
-                responseSchema: {
-                  type: Type.OBJECT,
-                  properties: { 
-                    word: { type: Type.STRING }, 
-                    hint: { type: Type.STRING } 
-                  },
-                  required: ["word", "hint"]
-                }
-              }
-            });
-
-            const data = JSON.parse(response.text);
-            const sources = [];
-            const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-            if (chunks) {
-              chunks.forEach(chunk => {
-                if (chunk.web?.uri) sources.push({ uri: chunk.web.uri, title: chunk.web.title || 'Source' });
-              });
-            }
-            return { ...data, sources };
-          } catch (e) {
-            console.error("AI Generation Error - Using local fallback", e);
-            // Instead of one word, pick a random one from our library
-            const randomFallback = FALLBACK_LIBRARY[Math.floor(Math.random() * FALLBACK_LIBRARY.length)];
-            return { ...randomFallback, sources: [], isFallback: true };
-          }
-        }
-
-        // --- Components ---
-        const CustomCategoryModal = ({ onClose, onSave }) => {
-          const [name, setName] = useState('');
-          const [items, setItems] = useState([{ word: '', hint: '' }]);
-
-          return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
-              <div className="bg-slate-800 w-full max-w-lg rounded-3xl border border-slate-700 shadow-2xl flex flex-col max-h-[85vh]">
-                <div className="p-6 border-b border-slate-700 flex items-center justify-between">
-                  <h3 className="text-xl font-bold flex items-center gap-2"><Icon name="FolderPlus" className="text-indigo-400" /> Custom Category</h3>
-                  <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-full"><Icon name="X" className="w-5 h-5" /></button>
-                </div>
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
-                  <input value={name} onChange={e => setName(e.target.value)} placeholder="Category Name" className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none" />
-                  {items.map((item, idx) => (
-                    <div key={idx} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3">
-                      <input value={item.word} onChange={e => {
-                        const next = [...items]; next[idx].word = e.target.value; setItems(next);
-                      }} placeholder="Secret Word" className="w-full bg-slate-800 p-2 rounded-lg text-sm border border-slate-700" />
-                      <input value={item.hint} onChange={e => {
-                        const next = [...items]; next[idx].hint = e.target.value; setItems(next);
-                      }} placeholder="Cryptic Hint" className="w-full bg-slate-800 p-2 rounded-lg text-sm border border-slate-700" />
-                    </div>
-                  ))}
-                  <button onClick={() => setItems([...items, { word: '', hint: '' }])} className="w-full py-2 border-2 border-dashed border-slate-700 rounded-xl text-slate-500 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">+ Add Item</button>
-                </div>
-                <div className="p-6 border-t border-slate-700">
-                  <button onClick={() => {
-                    const valid = items.filter(i => i.word && i.hint);
-                    if (name && valid.length) onSave({ id: Date.now().toString(), name, items: valid });
-                  }} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg">Save Category</button>
-                </div>
-              </div>
-            </div>
-          );
+            const LucideIcon = Lucide[name];
+            return LucideIcon ? <LucideIcon {...props} /> : null;
         };
 
         const App = () => {
-          const [view, setView] = useState(GameState.MODE);
-          const [players, setPlayers] = useState([]);
-          const [gameData, setGameData] = useState(null);
-          const [currentPlayer, setCurrentPlayer] = useState(0);
-          const [loading, setLoading] = useState(false);
-          const [loadingStep, setLoadingStep] = useState(0);
-          const [winner, setWinner] = useState(null);
-          const [selectedSuspect, setSelectedSuspect] = useState(null);
-          const [timeLeft, setTimeLeft] = useState(180);
+            const [view, setView] = useState(GameState.MODE);
+            const [players, setPlayers] = useState([]);
+            const [gameData, setGameData] = useState(null);
+            const [currentPlayerIdx, setCurrentPlayerIdx] = useState(0);
+            const [isSecretVisible, setIsSecretVisible] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [winner, setWinner] = useState(null);
+            const [selectedSuspect, setSelectedSuspect] = useState(null);
+            const [timeLeft, setTimeLeft] = useState(180);
 
-          const [numPlayers, setNumPlayers] = useState(4);
-          const [numImposters, setNumImposters] = useState(1);
-          const [category, setCategory] = useState("Silly & Random");
-          const [names, setNames] = useState(["", "", "", ""]);
-          const [customCats, setCustomCats] = useState([]);
-          const [isModalOpen, setIsModalOpen] = useState(false);
+            // Settings
+            const [numPlayers, setNumPlayers] = useState(4);
+            const [numImposters, setNumImposters] = useState(1);
+            const [category, setCategory] = useState("Silly & Random");
+            const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
 
-          useEffect(() => { setCustomCats(storage.getCustom()); }, []);
+            // Timer
+            useEffect(() => {
+                let timer;
+                if (view === GameState.PLAYING && timeLeft > 0) {
+                    timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+                }
+                return () => clearInterval(timer);
+            }, [view, timeLeft]);
 
-          useEffect(() => {
-            let interval;
-            if (loading) {
-              interval = setInterval(() => setLoadingStep(s => (s + 1) % LOADING_MESSAGES.length), 2000);
-            }
-            return () => clearInterval(interval);
-          }, [loading]);
+            const startNewGame = async () => {
+                setLoading(true);
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                let data;
+                try {
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-3-flash-preview',
+                        contents: `Generate a secret word and a cryptic imposter hint for category: ${category}. Return JSON { "word": string, "hint": string }`,
+                        config: { 
+                            tools: [{ googleSearch: {} }],
+                            responseMimeType: "application/json"
+                        }
+                    });
+                    data = JSON.parse(response.text);
+                } catch (e) {
+                    console.log("Using Fallback...");
+                    data = FALLBACK_DICTIONARY[Math.floor(Math.random() * FALLBACK_DICTIONARY.length)];
+                }
 
-          useEffect(() => {
-            let timer;
-            if (view === GameState.PLAYING && timeLeft > 0) {
-              timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
-            }
-            return () => clearInterval(timer);
-          }, [view, timeLeft]);
+                const names = playerNames.map((n, i) => n.trim() || `Player ${i+1}`);
+                const roles = [...Array(numImposters).fill(Role.IMPOSTER), ...Array(names.length - numImposters).fill(Role.CIVILIAN)];
+                roles.sort(() => Math.random() - 0.5);
 
-          const startMatch = async () => {
-            setLoading(true);
-            const finalNames = names.map((n, i) => n.trim() || `Player ${i+1}`);
-            const custom = customCats.find(c => c.name === category);
-            let data;
-            
-            if (custom) {
-              const item = custom.items[Math.floor(Math.random() * custom.items.length)];
-              data = { ...item, sources: [] };
-            } else {
-              data = await fetchGameData(category);
-            }
-            
-            setGameData(data);
-            const roles = [...Array(numImposters).fill(Role.IMPOSTER), ...Array(finalNames.length - numImposters).fill(Role.CIVILIAN)];
-            roles.sort(() => Math.random() - 0.5);
-            
-            setPlayers(finalNames.map((n, i) => ({
-              id: i, name: n, role: roles[i],
-              secret: roles[i] === Role.CIVILIAN ? data.word : data.hint
-            })));
-            
-            setCurrentPlayer(0);
-            setTimeLeft(180);
-            setSelectedSuspect(null);
-            setLoading(false);
-            setView(GameState.REVEAL);
-          };
+                const finalPlayers = names.map((name, i) => ({
+                    id: i,
+                    name,
+                    role: roles[i],
+                    secret: roles[i] === Role.CIVILIAN ? data.word : data.hint
+                }));
 
-          const handleVote = () => {
-            if (selectedSuspect === null) return;
-            const suspect = players.find(p => p.id === selectedSuspect);
-            setWinner(suspect.role === Role.IMPOSTER ? Role.CIVILIAN : Role.IMPOSTER);
-            setView(GameState.WINNER);
-          };
+                setGameData(data);
+                setPlayers(finalPlayers);
+                setCurrentPlayerIdx(0);
+                setIsSecretVisible(false);
+                setTimeLeft(180);
+                setLoading(false);
+                setView(GameState.REVEAL);
+            };
 
-          if (loading) return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
-              <div className="text-center p-12 bg-slate-800 rounded-3xl border border-slate-700 shadow-2xl max-w-sm w-full">
-                <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-8"></div>
-                <p className="text-xl font-black text-white uppercase tracking-tighter animate-pulse">{LOADING_MESSAGES[loadingStep]}</p>
-                <p className="text-slate-500 text-[9px] mt-4 font-bold uppercase tracking-widest">Powered by Gemini 3</p>
-              </div>
-            </div>
-          );
+            const handleNextReveal = () => {
+                if (currentPlayerIdx < players.length - 1) {
+                    setIsSecretVisible(false); // Reset visibility for next player
+                    setCurrentPlayerIdx(prev => prev + 1);
+                } else {
+                    setView(GameState.PLAYING);
+                }
+            };
 
-          return (
-            <div className="w-full min-h-screen flex flex-col items-center bg-slate-900 p-6 pb-20 overflow-y-auto custom-scrollbar">
-              <header className="mb-8 mt-4 text-center shrink-0">
-                <h1 className="text-5xl font-black text-white italic tracking-tighter">IMPOSTER</h1>
-                <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-1">
-                  {view === GameState.MODE ? 'WELCOME' : `${view} PHASE`}
-                </p>
-              </header>
+            if (loading) return (
+                <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-6">
+                    <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+                    <p className="text-indigo-400 font-black uppercase tracking-[0.2em] animate-pulse">Initializing Game...</p>
+                </div>
+            );
 
-              <main className="w-full flex justify-center">
-                {view === GameState.MODE && (
-                  <div className="w-full max-w-lg space-y-4 animate-fade-in">
-                     <button onClick={() => setView(GameState.SETUP)} className="w-full p-8 bg-slate-800 border border-slate-700 rounded-3xl flex items-center gap-6 hover:border-indigo-500 transition-all text-left group shadow-xl hover:bg-slate-800/80">
-                        <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"><Icon name="Smartphone" className="text-white w-8 h-8" /></div>
-                        <div><h3 className="text-2xl font-bold text-white mb-1">Pass & Play</h3><p className="text-slate-400 text-sm">Play locally on one device.</p></div>
-                      </button>
-                      <div className="p-6 bg-slate-800/30 border border-slate-800 rounded-3xl text-center">
-                         <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest italic">Invite your friends to sit in a circle.</p>
-                      </div>
-                  </div>
-                )}
+            return (
+                <div className="w-full min-h-screen flex flex-col items-center p-6 bg-slate-900 overflow-y-auto">
+                    <header className="mb-10 text-center animate-fade-in">
+                        <h1 className="text-6xl font-black text-white italic tracking-tighter">IMPOSTER</h1>
+                        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">Pass & Play Social Deduction</p>
+                    </header>
 
-                {view === GameState.SETUP && (
-                  <div className="w-full max-w-2xl bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl animate-fade-in">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-6">
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                             <label className="block text-slate-400 text-[10px] font-bold uppercase">Players</label>
-                             <span className="text-indigo-400 font-black">{numPlayers}</span>
-                          </div>
-                          <input type="range" min="3" max="12" value={numPlayers} onChange={e => {
-                            const v = parseInt(e.target.value); setNumPlayers(v);
-                            setNames(p => v > p.length ? [...p, ...Array(v - p.length).fill("")] : p.slice(0, v));
-                          }} className="w-full accent-indigo-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                    {view === GameState.MODE && (
+                        <div className="w-full max-w-md animate-fade-in">
+                            <button onClick={() => setView(GameState.SETUP)} className="w-full p-10 bg-indigo-600 rounded-[2rem] border-b-8 border-indigo-800 hover:translate-y-1 hover:border-b-4 transition-all shadow-2xl flex flex-col items-center gap-4 group">
+                                <Icon name="Users" className="w-12 h-12 text-white group-hover:scale-110 transition-transform" />
+                                <span className="text-2xl font-black text-white uppercase italic">Start Game</span>
+                            </button>
                         </div>
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                             <label className="block text-slate-400 text-[10px] font-bold uppercase">Imposters</label>
-                             <span className="text-red-500 font-black">{numImposters}</span>
-                          </div>
-                          <input type="range" min="1" max={Math.floor(numPlayers / 2) || 1} value={numImposters} onChange={e => setNumImposters(parseInt(e.target.value))} className="w-full accent-red-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
-                        </div>
-                        <div>
-                          <label className="block text-slate-400 text-[10px] font-bold uppercase mb-2 flex justify-between">Category <span onClick={() => setIsModalOpen(true)} className="text-indigo-400 cursor-pointer hover:underline text-[9px]">+ CUSTOM</span></label>
-                          <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors">
-                            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                            {customCats.map(cat => <option key={cat.id} value={cat.name}>★ {cat.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <label className="block text-slate-400 text-[10px] font-bold uppercase">Player Names</label>
-                        <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                          {names.map((n, i) => (
-                            <input key={i} type="text" placeholder={`Player ${i+1}`} value={n} onChange={e => {
-                              const next = [...names]; next[i] = e.target.value; setNames(next);
-                            }} className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-indigo-500 outline-none transition-colors" />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={startMatch} className="w-full mt-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-lg active:scale-95 transition-all uppercase tracking-widest text-sm">Start Game</button>
-                    <button onClick={() => setView(GameState.MODE)} className="w-full mt-4 text-slate-500 font-bold text-[10px] uppercase tracking-widest text-center hover:text-white transition-colors">Back to Menu</button>
-                  </div>
-                )}
-
-                {view === GameState.REVEAL && (
-                  <div className="w-full max-w-lg bg-slate-800 p-10 rounded-3xl border border-slate-700 shadow-2xl text-center animate-fade-in">
-                    <div className="w-16 h-16 bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="User" className="text-slate-300" /></div>
-                    <h2 className="text-4xl font-black text-white mb-2 uppercase tracking-tighter">{players[currentPlayer].name}</h2>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-10 italic">Pass device to {players[currentPlayer].name}</p>
-                    
-                    <div className="min-h-[160px] flex items-center justify-center">
-                      <div key={currentPlayer} className="w-full h-full animate-fade-in">
-                        <button onClick={() => {
-                          const el = document.getElementById(`secret-${currentPlayer}`);
-                          const btn = document.getElementById(`btn-${currentPlayer}`);
-                          if (el && btn) { el.classList.remove('hidden'); btn.classList.add('hidden'); }
-                        }} id={`btn-${currentPlayer}`} className="w-full py-12 bg-slate-900 border-2 border-dashed border-slate-700 rounded-2xl flex flex-col items-center gap-4 hover:border-indigo-500 transition-all group">
-                          <Icon name="EyeOff" className="text-slate-600 group-hover:text-indigo-400" />
-                          <span className="text-slate-600 font-bold uppercase text-[10px] group-hover:text-indigo-400">Tap to reveal secret</span>
-                        </button>
-                        <div id={`secret-${currentPlayer}`} className="hidden w-full p-8 bg-indigo-900/30 border-2 border-indigo-500 rounded-2xl shadow-[0_0_30px_rgba(99,102,241,0.1)]">
-                          <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-2">Your Secret</p>
-                          <p className="text-3xl font-black text-white uppercase tracking-tighter mb-2">{players[currentPlayer].secret}</p>
-                          <p className={`text-[9px] font-bold opacity-80 italic p-1 rounded ${players[currentPlayer].role === Role.IMPOSTER ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                            {players[currentPlayer].role === Role.IMPOSTER ? 'You are the IMPOSTER' : 'You are a CIVILIAN'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <button onClick={() => {
-                      if (currentPlayer < players.length - 1) setCurrentPlayer(p => p + 1);
-                      else setView(GameState.PLAYING);
-                    }} className="w-full mt-8 py-4 bg-white hover:bg-slate-100 text-slate-900 font-black rounded-2xl shadow-lg active:scale-95 transition-transform uppercase tracking-widest text-xs">
-                      {currentPlayer === players.length - 1 ? 'Start Round' : 'Next Player'}
-                    </button>
-                  </div>
-                )}
-
-                {view === GameState.PLAYING && (
-                  <div className="w-full max-w-lg space-y-4 animate-fade-in">
-                    <div className={`p-8 bg-slate-800 rounded-3xl border border-slate-700 shadow-2xl text-center transition-all ${timeLeft < 15 ? 'ring-4 ring-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)]' : ''}`}>
-                      <div className="flex items-center justify-center gap-3 mb-4">
-                        <Icon name="Clock" className={`${timeLeft < 15 ? 'text-red-500 animate-pulse' : 'text-indigo-400'}`} />
-                        <span className={`text-4xl font-mono font-bold ${timeLeft < 15 ? 'text-red-500' : 'text-white'}`}>{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
-                      </div>
-                      <p className="text-slate-400 text-sm italic">Describe your word without being too obvious. Find the imposter!</p>
-                    </div>
-
-                    <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl">
-                      <h3 className="text-red-500 text-[10px] font-black uppercase tracking-widest mb-6 flex items-center gap-2"><Icon name="Skull" className="w-4 h-4" /> The Accusation</h3>
-                      <div className="space-y-2">
-                        {players.map(p => (
-                          <button key={p.id} onClick={() => setSelectedSuspect(p.id)} className={`w-full p-4 flex justify-between items-center rounded-xl border transition-all ${selectedSuspect === p.id ? 'bg-red-900/30 border-red-500 shadow-lg' : 'bg-slate-900 border-slate-700 hover:border-slate-500'} text-slate-300 group`}>
-                            <span className="font-bold uppercase text-xs tracking-widest">{p.name}</span>
-                            {selectedSuspect === p.id && <Icon name="CheckCircle" className="w-4 h-4 text-red-500" />}
-                          </button>
-                        ))}
-                      </div>
-                      <button disabled={selectedSuspect === null} onClick={handleVote} className={`w-full mt-6 py-4 font-black rounded-2xl transition-all uppercase tracking-widest shadow-xl ${selectedSuspect === null ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500 text-white active:scale-95'}`}>Vote & Eliminate</button>
-                    </div>
-                  </div>
-                )}
-
-                {view === GameState.WINNER && (
-                  <div className="w-full max-w-lg bg-slate-800 p-10 rounded-3xl border border-slate-700 shadow-2xl text-center animate-fade-in">
-                    <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl ${winner === Role.CIVILIAN ? 'bg-indigo-600' : 'bg-red-600'}`}><Icon name="Trophy" className="text-white w-10 h-10" /></div>
-                    <h2 className={`text-5xl font-black mb-10 tracking-tighter ${winner === Role.CIVILIAN ? 'text-indigo-400' : 'text-red-500'}`}>{winner === Role.CIVILIAN ? 'CIVILIANS WIN' : 'IMPOSTER WINS'}</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
-                      <div className="p-4 bg-slate-900 rounded-xl border border-slate-800"><p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Secret Word</p><p className="text-white font-bold uppercase">{gameData.word}</p></div>
-                      <div className="p-4 bg-slate-900 rounded-xl border border-slate-800"><p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Imposter Hint</p><p className="text-white font-bold uppercase">{gameData.hint}</p></div>
-                    </div>
-                    
-                    {gameData.sources?.length > 0 && (
-                      <div className="text-left mb-8 space-y-2">
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">AI Sources</p>
-                        <div className="flex flex-wrap gap-2">
-                          {gameData.sources.map((s, i) => <a key={i} href={s.uri} target="_blank" className="text-[10px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition-colors">{s.title}</a>)}
-                        </div>
-                      </div>
                     )}
 
-                    <button onClick={() => setView(GameState.SETUP)} className="w-full py-4 bg-white text-slate-900 font-black rounded-2xl shadow-xl active:scale-95 transition-transform uppercase tracking-widest">New Game</button>
-                  </div>
-                )}
-              </main>
+                    {view === GameState.SETUP && (
+                        <div className="w-full max-w-lg bg-slate-800 p-8 rounded-[2rem] border border-slate-700 shadow-2xl space-y-8 animate-fade-in">
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center"><label className="text-xs font-black text-slate-500 uppercase tracking-widest">Players</label><span className="text-indigo-400 font-black">{numPlayers}</span></div>
+                                <input type="range" min="3" max="12" value={numPlayers} onChange={e => {
+                                    const val = parseInt(e.target.value); setNumPlayers(val);
+                                    setPlayerNames(prev => val > prev.length ? [...prev, ...Array(val - prev.length).fill("")] : prev.slice(0, val));
+                                }} className="w-full accent-indigo-500 bg-slate-700 h-2 rounded-lg appearance-none cursor-pointer" />
+                            </div>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center"><label className="text-xs font-black text-slate-500 uppercase tracking-widest">Imposters</label><span className="text-red-500 font-black">{numImposters}</span></div>
+                                <input type="range" min="1" max={Math.floor(numPlayers / 2)} value={numImposters} onChange={e => setNumImposters(parseInt(e.target.value))} className="w-full accent-red-500 bg-slate-700 h-2 rounded-lg appearance-none cursor-pointer" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Category</label>
+                                <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500">
+                                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-3">
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">Player Names</label>
+                                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                    {playerNames.map((n, i) => (
+                                        <input key={i} placeholder={`Player ${i+1}`} value={n} onChange={e => {
+                                            const next = [...playerNames]; next[i] = e.target.value; setPlayerNames(next);
+                                        }} className="bg-slate-900 p-3 rounded-lg border border-slate-700 text-sm text-white focus:border-indigo-500 outline-none" />
+                                    ))}
+                                </div>
+                            </div>
+                            <button onClick={startNewGame} className="w-full py-5 bg-indigo-600 rounded-2xl text-white font-black uppercase tracking-widest shadow-lg hover:bg-indigo-500 active:scale-95 transition-all">Start Match</button>
+                        </div>
+                    )}
 
-              {isModalOpen && <CustomCategoryModal onClose={() => setIsModalOpen(false)} onSave={c => { storage.saveCustom(c); setCustomCats(storage.getCustom()); setIsModalOpen(false); }} />}
+                    {view === GameState.REVEAL && (
+                        <div className="w-full max-w-md bg-slate-800 p-10 rounded-[2.5rem] border border-slate-700 shadow-2xl text-center space-y-8 animate-fade-in">
+                            <div className="space-y-2">
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Current Turn</p>
+                                <h2 className="text-5xl font-black text-white italic">{players[currentPlayerIdx].name}</h2>
+                                <p className="text-indigo-400 text-xs font-bold animate-pulse">Pass device to {players[currentPlayerIdx].name}</p>
+                            </div>
 
-              <footer className="mt-12 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em] animate-fade-in flex items-center gap-2">
-                {gameData?.isFallback ? "USING LOCAL DICTIONARY" : "POWERED BY GEMINI 3"}
-              </footer>
-            </div>
-          );
+                            <div className="py-10">
+                                {!isSecretVisible ? (
+                                    <button onClick={() => setIsSecretVisible(true)} className="w-full py-20 bg-slate-900 border-4 border-dashed border-slate-700 rounded-3xl flex flex-col items-center gap-4 hover:border-indigo-500 transition-all group">
+                                        <Icon name="EyeOff" className="w-12 h-12 text-slate-700 group-hover:text-indigo-500" />
+                                        <span className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Tap to reveal secret</span>
+                                    </button>
+                                ) : (
+                                    <div className="w-full py-12 bg-indigo-900/40 border-4 border-indigo-500 rounded-3xl animate-fade-in shadow-[0_0_50px_rgba(99,102,241,0.2)]">
+                                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Your Secret</p>
+                                        <p className="text-4xl font-black text-white uppercase tracking-tight mb-4">{players[currentPlayerIdx].secret}</p>
+                                        <div className={`inline-block px-4 py-1 rounded-full text-[10px] font-black uppercase ${players[currentPlayerIdx].role === Role.IMPOSTER ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                                            {players[currentPlayerIdx].role}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <button onClick={handleNextReveal} disabled={!isSecretVisible} className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl ${isSecretVisible ? 'bg-white text-slate-900 hover:scale-105 active:scale-95' : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}`}>
+                                {currentPlayerIdx === players.length - 1 ? 'Start Round' : 'Next Player'}
+                            </button>
+                        </div>
+                    )}
+
+                    {view === GameState.PLAYING && (
+                        <div className="w-full max-w-lg space-y-6 animate-fade-in">
+                            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 text-center shadow-2xl">
+                                <div className="flex items-center justify-center gap-4 mb-4">
+                                    <Icon name="Clock" className={timeLeft < 15 ? 'text-red-500 animate-pulse' : 'text-indigo-400'} />
+                                    <span className={`text-5xl font-mono font-black ${timeLeft < 15 ? 'text-red-500' : 'text-white'}`}>{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
+                                </div>
+                                <p className="text-slate-400 text-sm">Describe your word carefully. Find the imposter!</p>
+                            </div>
+
+                            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl">
+                                <h3 className="text-red-500 text-[10px] font-black uppercase tracking-[0.3em] mb-6">Vote Out Suspect</h3>
+                                <div className="space-y-2">
+                                    {players.map(p => (
+                                        <button key={p.id} onClick={() => setSelectedSuspect(p.id)} className={`w-full p-4 flex justify-between items-center rounded-xl border transition-all ${selectedSuspect === p.id ? 'bg-red-900/40 border-red-500 text-white shadow-lg' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
+                                            <span className="font-bold uppercase tracking-widest">{p.name}</span>
+                                            {selectedSuspect === p.id && <Icon name="CheckCircle" className="w-5 h-5 text-red-500" />}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button disabled={selectedSuspect === null} onClick={() => {
+                                    const suspect = players.find(p => p.id === selectedSuspect);
+                                    setWinner(suspect.role === Role.IMPOSTER ? Role.CIVILIAN : Role.IMPOSTER);
+                                    setView(GameState.WINNER);
+                                }} className={`w-full mt-6 py-5 rounded-2xl font-black uppercase tracking-widest transition-all ${selectedSuspect === null ? 'bg-slate-700 text-slate-500' : 'bg-red-600 text-white shadow-xl hover:bg-red-500 active:scale-95'}`}>Eliminate Player</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {view === GameState.WINNER && (
+                        <div className="w-full max-w-md bg-slate-800 p-12 rounded-[3rem] border border-slate-700 shadow-2xl text-center space-y-8 animate-fade-in">
+                            <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto shadow-2xl ${winner === Role.CIVILIAN ? 'bg-green-600' : 'bg-red-600'}`}>
+                                <Icon name="Trophy" className="w-12 h-12 text-white" />
+                            </div>
+                            <div>
+                                <h2 className={`text-6xl font-black tracking-tighter mb-2 ${winner === Role.CIVILIAN ? 'text-green-400' : 'text-red-400'}`}>{winner === Role.CIVILIAN ? 'VICTORY' : 'DEFEAT'}</h2>
+                                <p className="text-slate-400 font-bold uppercase tracking-widest">{winner === Role.CIVILIAN ? 'CIVILIANS FOUND THE IMPOSTER' : 'THE IMPOSTER FOOLED YOU ALL'}</p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-700"><p className="text-[9px] text-slate-500 font-black uppercase mb-1">Secret Word</p><p className="text-white font-bold">{gameData.word}</p></div>
+                                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-700"><p className="text-[9px] text-slate-500 font-black uppercase mb-1">Imposter Hint</p><p className="text-white font-bold">{gameData.hint}</p></div>
+                            </div>
+
+                            <button onClick={() => setView(GameState.SETUP)} className="w-full py-5 bg-white text-slate-900 font-black rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all uppercase tracking-widest">New Game</button>
+                        </div>
+                    )}
+
+                    <footer className="mt-auto pt-10 text-slate-600 text-[9px] font-black uppercase tracking-[0.5em] animate-fade-in">AI Engine: Gemini 3</footer>
+                </div>
+            );
         };
 
         const rootEl = document.getElementById('root');
