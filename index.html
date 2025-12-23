@@ -102,20 +102,29 @@
         
         const CATEGORIES = ["Silly & Random", "Christmas", "Bible", "Cyberpunk", "Space", "Ancient History", "Food", "Movies", "Gaming", "Undercover", "Science", "Animals", "Pop Culture"];
 
-        // Modern, robust UTF-8 safe Base64 encoding/decoding
         const utoa = (str) => {
-            const bytes = new TextEncoder().encode(str);
-            let binString = "";
-            for (let i = 0; i < bytes.byteLength; i++) {
-                binString += String.fromCharCode(bytes[i]);
+            try {
+                const bytes = new TextEncoder().encode(str);
+                let binString = "";
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binString += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binString);
+            } catch (e) {
+                console.error("utoa error", e);
+                return "";
             }
-            return btoa(binString);
         };
 
         const atou = (base64) => {
-            const binString = atob(base64);
-            const bytes = Uint8Array.from(binString, (m) => m.charCodeAt(0));
-            return new TextDecoder().decode(bytes);
+            try {
+                const binString = atob(base64);
+                const bytes = Uint8Array.from(binString, (m) => m.charCodeAt(0));
+                return new TextDecoder().decode(bytes);
+            } catch (e) {
+                console.error("atou error", e);
+                throw e;
+            }
         };
 
         const Icon = ({ name, ...props }) => {
@@ -144,16 +153,19 @@
             const [manualKey, setManualKey] = useState("");
 
             useEffect(() => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const dataParam = urlParams.get('data');
-                if (dataParam) {
-                    loadFromEncodedData(dataParam);
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const dataParam = urlParams.get('data');
+                    if (dataParam) {
+                        loadFromEncodedData(dataParam);
+                    }
+                } catch (e) {
+                    console.error("URL params error", e);
                 }
             }, []);
 
             const loadFromEncodedData = (encodedData) => {
                 try {
-                    // Pre-process the string: trim and remove potential URL encodings
                     const cleanEncoded = decodeURIComponent(encodedData.trim());
                     const decodedStr = atou(cleanEncoded);
                     const decoded = JSON.parse(decodedStr);
@@ -171,6 +183,16 @@
                 } catch (e) {
                     console.error("Neural Key corruption error:", e);
                     alert("Neural Key Corrupted or Invalid. Please ensure you copied the full key or link.");
+                }
+            };
+
+            const safeResetURL = () => {
+                try {
+                    if (window.history && window.history.pushState) {
+                        window.history.pushState({}, '', window.location.pathname);
+                    }
+                } catch (e) {
+                    console.warn("Could not reset URL history due to security restrictions", e);
                 }
             };
 
@@ -197,8 +219,13 @@
             };
 
             const getShareableLink = (encoded) => {
-                // Use encodeURIComponent to safely put Base64 into a URL
-                return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(encoded)}`;
+                try {
+                    const origin = window.location.origin || "";
+                    const pathname = window.location.pathname || "/";
+                    return `${origin}${pathname}?data=${encodeURIComponent(encoded)}`;
+                } catch (e) {
+                    return `?data=${encodeURIComponent(encoded)}`;
+                }
             };
 
             const startNewGame = async () => {
@@ -283,6 +310,7 @@
                         setShowLinkFallback(true);
                     }
                 } catch (err) {
+                    console.error("Clipboard Error", err);
                     setShowLinkFallback(true);
                 }
             };
@@ -291,27 +319,31 @@
                 let input = manualKey.trim();
                 if (!input) return;
 
-                // Extraction logic for links vs raw keys
                 let key = input;
                 if (input.includes("data=")) {
                     try {
-                        const url = new URL(input.startsWith('http') ? input : 'http://x.com/' + input);
-                        const params = new URLSearchParams(url.search);
-                        key = params.get('data') || key;
-                    } catch (e) {
-                        // Fallback simple split if URL parsing fails
-                        if (input.includes("?data=")) {
+                        // More defensive URL parsing
+                        if (input.startsWith('http')) {
+                            const url = new URL(input);
+                            const params = new URLSearchParams(url.search);
+                            key = params.get('data') || key;
+                        } else if (input.includes("?data=")) {
                             key = input.split("?data=")[1].split("&")[0];
                         }
+                    } catch (e) {
+                        console.error("Manual join key parsing error", e);
                     }
                 }
                 
                 loadFromEncodedData(key);
             };
 
-            const BackButton = ({ to }) => (
+            const BackButton = ({ to, onClick }) => (
                 <button 
-                    onClick={() => setView(to)}
+                    onClick={() => {
+                        if (onClick) onClick();
+                        setView(to);
+                    }}
                     className="absolute left-6 top-6 p-2 rounded-full bg-slate-900/50 border border-slate-800 hover:border-indigo-500 transition-all text-slate-400 hover:text-indigo-400 z-10"
                 >
                     <Icon name="ArrowLeft" className="w-5 h-5" />
@@ -340,7 +372,7 @@
                         </h1>
                         <div className="flex items-center justify-center gap-4 mt-4">
                             <span className="h-px w-8 bg-indigo-500/30"></span>
-                            <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-[0.6em]">Matrix v7.6</p>
+                            <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-[0.6em]">Matrix v7.8</p>
                             <span className="h-px w-8 bg-indigo-500/30"></span>
                         </div>
                     </header>
@@ -517,8 +549,9 @@
                         )}
 
                         {view === GameState.REVEAL && (
-                            <div className="glass-card p-10 rounded-[3rem] text-center space-y-8 animate-fade-in border-t-4 border-red-500/50">
-                                <div className="space-y-1">
+                            <div className="glass-card p-10 rounded-[3rem] text-center space-y-8 animate-fade-in border-t-4 border-red-500/50 relative">
+                                <BackButton to={GameState.CONFIRM} onClick={() => setIsSecretVisible(false)} />
+                                <div className="space-y-1 pt-6">
                                     <h2 className="text-4xl font-orbitron font-black text-white italic">{players[currentPlayerIdx].name}</h2>
                                     <p className="text-[10px] font-black text-red-500 uppercase tracking-[0.4em]">Active Neural Stream</p>
                                 </div>
@@ -549,7 +582,14 @@
                         )}
 
                         {view === GameState.PLAYING && (
-                            <div className="space-y-6 animate-fade-in">
+                            <div className="space-y-6 animate-fade-in relative pt-12">
+                                <BackButton to={GameState.MODE} onClick={() => {
+                                    if (confirm("Reset current mission?")) {
+                                        safeResetURL();
+                                    } else {
+                                        setView(GameState.PLAYING);
+                                    }
+                                }} />
                                 <div className="glass-card p-8 rounded-[2.5rem] text-center border-t-2 border-indigo-500">
                                     <div className="flex items-center justify-center gap-6 mb-6">
                                         <Icon name="Timer" className={timeLeft < 30 ? 'text-red-500 animate-pulse' : 'text-indigo-400'} />
@@ -576,8 +616,9 @@
                         )}
 
                         {view === GameState.VOTED_REVEAL && (
-                            <div className="glass-card p-12 rounded-[4rem] text-center space-y-12 animate-fade-in flex flex-col items-center">
-                                <div className="space-y-4">
+                            <div className="glass-card p-12 rounded-[4rem] text-center space-y-12 animate-fade-in flex flex-col items-center relative">
+                                <BackButton to={GameState.PLAYING} />
+                                <div className="space-y-4 pt-6">
                                     <h2 className="text-slate-500 font-bold uppercase tracking-widest text-sm">System De-Synchronization</h2>
                                     <h3 className="text-5xl font-orbitron font-black text-white italic animate-glitch">{votedPlayer.name}</h3>
                                 </div>
@@ -593,8 +634,13 @@
                         )}
 
                         {view === GameState.WINNER && (
-                            <div className="glass-card p-10 rounded-[4rem] text-center space-y-10 animate-fade-in border-t-4 border-indigo-500">
-                                <div className="relative">
+                            <div className="glass-card p-10 rounded-[4rem] text-center space-y-10 animate-fade-in border-t-4 border-indigo-500 relative">
+                                <BackButton to={GameState.MODE} onClick={() => {
+                                    safeResetURL();
+                                    setIsOnline(false);
+                                    setManualKey("");
+                                }} />
+                                <div className="relative pt-6">
                                     <Icon name={winner === Role.CIVILIAN ? "Trophy" : "Radiation"} className={`w-24 h-24 mx-auto mb-4 ${winner === Role.CIVILIAN ? 'text-green-500 drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]' : 'text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]'}`} />
                                     <h2 className={`text-6xl font-orbitron font-black italic tracking-tighter ${winner === Role.CIVILIAN ? 'text-green-400' : 'text-red-400'}`}>{winner === Role.CIVILIAN ? 'VICTORY' : 'FAILURE'}</h2>
                                     <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em] mt-2">{winner === Role.CIVILIAN ? 'Neural Grid Secured' : 'Critical System Compromise'}</p>
@@ -614,9 +660,7 @@
                                 <div className="space-y-4 pt-6 border-t border-slate-800">
                                     <button onClick={() => { 
                                         setView(GameState.MODE); 
-                                        try {
-                                            window.history.pushState({}, '', window.location.pathname);
-                                        } catch (e) {}
+                                        safeResetURL();
                                         setIsOnline(false);
                                         setManualKey("");
                                     }} className="w-full py-6 bg-indigo-600 text-white font-orbitron font-bold rounded-[2.5rem] shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all uppercase tracking-widest text-lg">Re-Initialize</button>
