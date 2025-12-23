@@ -322,7 +322,6 @@
                 let key = input;
                 if (input.includes("data=")) {
                     try {
-                        // More defensive URL parsing
                         if (input.startsWith('http')) {
                             const url = new URL(input);
                             const params = new URLSearchParams(url.search);
@@ -380,23 +379,28 @@
                     <main className="w-full max-w-lg flex flex-col items-stretch relative">
                         {view === GameState.MODE && (
                             <div className="space-y-4 animate-fade-in">
-                                <button onClick={() => { setIsOnline(true); setView(GameState.SETUP); }} className="group glass-card p-10 rounded-[2.5rem] border-b-8 border-indigo-900 hover:translate-y-1 hover:border-b-2 transition-all flex flex-col items-center gap-6">
-                                    <div className="p-5 bg-indigo-600 rounded-3xl shadow-lg shadow-indigo-500/50 group-hover:scale-110 transition-transform">
-                                        <Icon name="Plus" className="w-10 h-10 text-white" />
-                                    </div>
-                                    <span className="font-orbitron text-2xl font-bold text-white uppercase">New Mission</span>
-                                </button>
-                                
-                                <button onClick={() => setView(GameState.MANUAL_JOIN)} className="group glass-card p-8 rounded-[2.5rem] border-b-8 border-indigo-500/20 hover:translate-y-1 hover:border-b-2 transition-all flex flex-col items-center gap-4">
-                                    <div className="p-4 bg-indigo-900/40 rounded-2xl group-hover:scale-110 transition-transform border border-indigo-500/30">
-                                        <Icon name="Key" className="w-8 h-8 text-indigo-400" />
-                                    </div>
-                                    <span className="font-orbitron text-xl font-bold text-indigo-400 uppercase">Join Mission</span>
-                                </button>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button onClick={() => { setIsOnline(true); setView(GameState.SETUP); }} className="group glass-card p-6 md:p-8 rounded-[2rem] border-b-4 border-indigo-900 hover:translate-y-1 hover:border-b-2 transition-all flex flex-col items-center gap-4">
+                                        <div className="p-4 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/50 group-hover:scale-110 transition-transform">
+                                            <Icon name="Plus" className="w-8 h-8 text-white" />
+                                        </div>
+                                        <span className="font-orbitron text-sm md:text-base font-bold text-white uppercase text-center">New Mission</span>
+                                    </button>
+                                    
+                                    <button onClick={() => setView(GameState.MANUAL_JOIN)} className="group glass-card p-6 md:p-8 rounded-[2rem] border-b-4 border-indigo-500/20 hover:translate-y-1 hover:border-b-2 transition-all flex flex-col items-center gap-4">
+                                        <div className="p-4 bg-indigo-900/40 rounded-2xl group-hover:scale-110 transition-transform border border-indigo-500/30">
+                                            <Icon name="Key" className="w-8 h-8 text-indigo-400" />
+                                        </div>
+                                        <span className="font-orbitron text-sm md:text-base font-bold text-indigo-400 uppercase text-center">Join Mission</span>
+                                    </button>
+                                </div>
 
-                                <button onClick={() => { setIsOnline(false); setView(GameState.SETUP); }} className="group glass-card p-6 rounded-[2rem] border-b-8 border-slate-900 hover:translate-y-1 hover:border-b-2 transition-all flex flex-col items-center gap-3">
-                                    <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Offline Mode</span>
-                                    <span className="font-orbitron text-sm font-bold text-slate-400 uppercase">Pass & Play</span>
+                                <button onClick={() => { setIsOnline(false); setView(GameState.SETUP); }} className="group glass-card p-6 rounded-[2rem] border-b-4 border-slate-900 hover:translate-y-1 hover:border-b-2 transition-all flex flex-col items-center gap-2 w-full">
+                                    <span className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Offline Mode</span>
+                                    <div className="flex items-center gap-3">
+                                        <Icon name="Gamepad2" className="w-5 h-5 text-slate-400" />
+                                        <span className="font-orbitron text-base font-bold text-slate-400 uppercase">Pass & Play</span>
+                                    </div>
                                 </button>
                             </div>
                         )}
