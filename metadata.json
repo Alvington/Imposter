@@ -1,5 +1,5 @@
 {
-  "name": "Imposter Word Game Web",
+  "name": "Imposter Game",
   "description": "A social deduction game where civilians share a secret word and imposters receive a related hint. Players must figure out who the imposter is before they take over!",
   "requestFramePermissions": []
 }
